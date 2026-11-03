@@ -66,12 +66,20 @@ class DependArray(DependObject, container):
             if isinstance(attr, types.FunctionType):
                 setattr(container, method_name, cache_update(attr))
 
-    # Add some missing methods
-    __truediv__ = cache_update(container.__div__)
+    # Add some missing methods. True division is implemented explicitly: numpy>=2
+    # removed container.__div__/__rdiv__/__idiv__ (numpy 1.x mapped them to true_divide).
+    @cache_update
+    def __truediv__(self, other):
+        return self._rc(np.true_divide(self.array, np.asarray(other)))
 
-    __rtruediv__ = cache_update(container.__rdiv__)
+    @cache_update
+    def __rtruediv__(self, other):
+        return self._rc(np.true_divide(np.asarray(other), self.array))
 
-    __itruediv__ = cache_update(container.__idiv__)
+    @cache_update
+    def __itruediv__(self, other):
+        np.true_divide(self.array, other, self.array)
+        return self
 
     @cache_update
     def __floordiv__(self, other):
