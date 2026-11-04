@@ -11,6 +11,12 @@ def read_fifo(fin, dtype, count):
     return np.frombuffer(buffer, dtype=dtype, count=count)
 
 
+def read_fifo_scalar(fin, dtype):
+    # count=1 reads still return a one-element ndarray, but _step is stored as
+    # a zero-dimensional array and needs a scalar assignment.
+    return read_fifo(fin, dtype=dtype, count=1).item()
+
+
 class IOFifo(object):
     def __init__(self, cwd=None):
         self.mode = "fifo"
@@ -53,7 +59,7 @@ class IOFifo(object):
             self._system.cell_basis[:] = cell_basis
 
         # First cycle
-        self._step[()] = read_fifo(self._fin, dtype="i4", count=1)
+        self._step[()] = read_fifo_scalar(self._fin, dtype="i4")
 
         if self._pbc == 2 :
             cell_basis = read_fifo(self._fin, dtype="f8", count=9).reshape(3, 3).copy()
@@ -65,14 +71,12 @@ class IOFifo(object):
         self._system.wrap_positions()
 
         self._fout = open(output, "wb")
-        self._fout.write(energy.tobytes())
-        self._fout.write(forces.tobytes(order="F"))
+        self._write_results(energy, forces)
 
         while True:
 
             try:
-                _step = read_fifo(self._fin, dtype="i4", count=1)
-                self._step[()] = _step
+                self._step[()] = read_fifo_scalar(self._fin, dtype="i4")
             except:
                 break
 
@@ -85,8 +89,14 @@ class IOFifo(object):
 
             self._system.wrap_positions()
 
-            self._fout.write(energy.tobytes())
-            self._fout.write(forces.tobytes(order="F"))
+            self._write_results(energy, forces)
+
+    def _write_results(self, energy, forces):
+        # FIFO writes are buffered by Python; flush each packet so the driver
+        # can read small energy/force responses immediately.
+        self._fout.write(energy.tobytes())
+        self._fout.write(forces.tobytes(order="F"))
+        self._fout.flush()
 
     @staticmethod
     def save_input(input):
